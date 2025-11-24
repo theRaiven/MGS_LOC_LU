@@ -1,16 +1,35 @@
-#include "SparseMatrix.h"
+ï»¿#include "SparseMatrix.h"
 #include <vector>
+
 SparseMatrix::SparseMatrix() : n(0), ig(nullptr), jg(nullptr), ggl(nullptr), ggu(nullptr),
                                 di(nullptr), b(nullptr),
                                 Atb(nullptr), r(nullptr), z(nullptr), p(nullptr),
                                 Ap(nullptr), tmp(nullptr), invDiag(nullptr)
 { }
-
+ 
 bool SparseMatrix::AllocateWorkVectors()
 {
     if (n <= 0) return false;
 
-    delete[] Atb; delete[] r; delete[] z; delete[] p; delete[] Ap; delete[] tmp; delete[] invDiag;
+    if (Atb) delete[] Atb;
+    if (r)   delete[] r;
+    if (z)   delete[] z;
+    if (p)   delete[] p;
+    if (Ap)  delete[] Ap;
+    if (tmp) delete[] tmp;
+    if (tmp2) delete[] tmp2;
+    if (invDiag) delete[] invDiag;
+
+    if (ggl_row_start) delete[] ggl_row_start;
+    if (ggu_row_start) delete[] ggu_row_start;
+
+    if (ilu_di) delete[] ilu_di;
+    if (ilu_ggl) delete[] ilu_ggl;
+    if (ilu_ggu) delete[] ilu_ggu;
+
+    ilu_di = new double[n];
+    ilu_ggl = new double[sizeGGL];
+    ilu_ggu = new double[sizeGGU];
 
     Atb = new double[n];
     r = new double[n];
@@ -18,10 +37,16 @@ bool SparseMatrix::AllocateWorkVectors()
     p = new double[n];
     Ap = new double[n];
     tmp = new double[n];
+    tmp2 = new double[n];
     invDiag = new double[n];
+    ggl_row_start = new int[n];
+    ggu_row_start = new int[n];
 
-    for (int i = 0; i < n; ++i) {
-        Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = invDiag[i] = 0.0;
+    for (int i = 0; i < n; ++i) 
+
+    {
+        Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = tmp2[i] = tmp2[i]= 0.0;
+        ggl_row_start[i] = ggu_row_start[i] = 0;
     }
 
     return true;
@@ -29,25 +54,42 @@ bool SparseMatrix::AllocateWorkVectors()
 
 SparseMatrix::~SparseMatrix()
 {
-    delete[] ig;  ig = nullptr;
-    delete[] jg;  jg = nullptr;
-    delete[] ggl; ggl = nullptr;
-    delete[] ggu; ggu = nullptr;
-    delete[] di;  di = nullptr;
-    delete[] b;   b = nullptr;
-}
+    if (ig)   delete[] ig;
+    if (jg)   delete[] jg;
+    if (ggl)  delete[] ggl;
+    if (ggu)  delete[] ggu;
+    if (di)   delete[] di;
+    if (b)    delete[] b;
 
+    if (Atb) delete[] Atb;
+    if (r)   delete[] r;
+    if (z)   delete[] z;
+    if (p)   delete[] p;
+    if (Ap)  delete[] Ap;
+    if (tmp) delete[] tmp;
+    if (invDiag) delete[] invDiag;
+
+    if (ilu_di && ilu_di != reinterpret_cast<double*>(1)) delete[] ilu_di;
+    if (ilu_ggl) delete[] ilu_ggl;
+    if (ilu_ggu) delete[] ilu_ggu;
+
+    ig = jg = nullptr;
+    ggl = ggu = nullptr;
+    di = b = nullptr;
+    Atb = r = z = p = Ap = tmp = invDiag = nullptr;
+    ilu_di = ilu_ggl = ilu_ggu = nullptr;
+}
 bool SparseMatrix::ReadIntArray(const string& file, int*& masData, int size)
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new int[size];
@@ -55,7 +97,7 @@ bool SparseMatrix::ReadIntArray(const string& file, int*& masData, int size)
     {
         if (!(fmas >> masData[i]))
         {
-            cerr << "Îøèáêà ÷òåíèÿ: " << file << endl;
+            cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << endl;
             delete[] masData;
             masData = nullptr;
             return false;
@@ -67,13 +109,13 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new double[size];
@@ -81,7 +123,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
     {
         if (!(fmas >> masData[i]))
         {
-            cerr << "Îøèáêà ÷òåíèÿ: " << file << endl;
+            cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << endl;
             delete[] masData;
             masData = nullptr;
             return false;
@@ -93,13 +135,13 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new double[size];
@@ -113,7 +155,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
             }
             else
             {
-                cerr << "Îøèáêà ÷òåíèÿ: " << file << " íà ýëåìåíòå " << i << endl;
+                cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << " Ð½Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ðµ " << i << endl;
                 delete[] masData;
                 masData = nullptr;
                 return false;
@@ -128,7 +170,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     ifstream fkus(kuslauFile.c_str());
     if (!fkus)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü " << kuslauFile << "\n";
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ " << kuslauFile << "\n";
         return false;
     }
     fkus >> n >> maxIter >> eps;
@@ -138,7 +180,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     int jgSize = ig[n];
     if (jgSize <= 0)
     {
-        cerr << "Íåâåðíûé jgSize (ig[n]) = " << jgSize << endl;
+        cerr << "ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ jgSize (ig[n]) = " << jgSize << endl;
         return false;
     }
     if (!ReadIntArray("jg.txt", jg, jgSize)) return false;
@@ -150,7 +192,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     return true;
 }
 void SparseMatrix::Multiply(const double* x, double* y) const
-{
+{// y = A*x
     for (int i = 0; i < n; i++)
     {
         y[i] = di[i] * x[i];
@@ -185,42 +227,38 @@ void SparseMatrix::Multiply(const double* x, double* y) const
 
 void SparseMatrix::MultiplyTranspose(const double* v, double* y) const
 {
-    for (int i = 0; i < n; i++) 
-    {
+    for (int i = 0; i < n; i++)
         y[i] = di[i] * v[i];
-    }
 
-    int ggl_k = 0;
-    int ggu_k = 0;
+    int kgl = 0;
+    int kgu = 0;
 
     for (int i = 0; i < n; i++)
     {
-        int i0 = ig[i], i1 = ig[i + 1];
-        for (int p = i0; p < i1; p++)
+        int start = ig[i];
+        int end = ig[i + 1];
+
+        for (int p = start; p < end; p++)
         {
             int j = jg[p];
+
             if (j < i)
-            { // A[i][j]
-                if (ggl_k < sizeGGL)
-                {
-                    y[j] += ggl[ggl_k++] * v[i];
-                }
+            {
+                y[j] += ggl[kgl] * v[i];
+                kgl++;
             }
             else if (j > i)
-            { // A[i][j]
-                if (ggu_k < sizeGGU)
-                {
-                    y[j] += ggu[ggu_k++] * v[i];
-                }
+            {
+                y[j] += ggu[kgu] * v[i];
+                kgu++;
             }
         }
     }
 }
 
-
 void SparseMatrix::PrintDense() const
 {
-    cout << "Ïëîòíàÿ ìàòðèöà " << n << "x" << n << ":\n";
+    cout << "ÐŸÐ»Ð¾Ñ‚Ð½Ð°Ñ Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ð° " << n << "x" << n << ":\n";
     int lowerUpperSize = (ig[n] - n) / 2;
 
     double** dense = new double* [n];
@@ -268,7 +306,7 @@ void SparseMatrix::PrintDense() const
         }
     }
 
-    // Ïå÷àòü ìàòðèöû
+    // ÐŸÐµÑ‡Ð°Ñ‚ÑŒ Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ñ‹
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             cout << setw(8) << setprecision(3) << dense[i][j] << " ";
@@ -276,7 +314,6 @@ void SparseMatrix::PrintDense() const
         cout << endl;
     }
 }
-
 double SparseMatrix::Dot(const double* a, const double* b) const
 {
     double result = 0.0;
@@ -292,64 +329,181 @@ double SparseMatrix::Norm2(const double* a) const
     return sqrt(Dot(a, a));
 }
 
-bool SparseMatrix::SolveMSG(double* x, const string& prec) const
-{
-    MultiplyTranspose(b, Atb);
 
-    for (int i = 0; i < n; ++i)
-    {
-        x[i] = 0.0;
-        r[i] = Atb[i];
-    }
+bool SparseMatrix::SolveMsgLUFactorization(double* x)
+{
+    BuildILU();
+
+    for (int i = 0; i < n; ++i) p[i] = 0.0;
+
+    Multiply(x, tmp);
+    for (int i = 0; i < n; i++) r[i] = b[i] - tmp[i];
+
+    Solve_Ly_b(r, tmp);          // tmp = L^-1 r
+    SolveLTranspose(tmp, Ap);    // Ap = L^-T tmp
+    MultiplyTranspose(Ap, tmp2); // tmp2 = A^T Ap
+    SolveUTranspose(tmp2, r);    // r = U^-T tmp2 -> r_tilde
 
     for (int i = 0; i < n; ++i) z[i] = r[i];
+    double rho_prev = Dot(r, r);
+    double initial_norm = sqrt(rho_prev);
+    cout << "ÐÐ°Ñ‡Ð°Ð»ÑŒÐ½Ð°Ñ Ð½Ð¾Ñ€Ð¼Ð° Ð½ÐµÐ²ÑÐ·ÐºÐ¸: " << initial_norm << endl;
 
-    for (int i = 0; i < n; ++i) p[i] = z[i];
-
-    double rz_old = Dot(r, z);
-    double normAtb = Norm2(Atb);
-    if (normAtb < 1e-16) normAtb = 1.0;
-
-    for (int iter = 0; iter < maxIter; ++iter)
+    if (initial_norm < eps)
     {
-        Multiply(p, tmp);
+        cout << "Ð ÐµÑˆÐµÐ½Ð¸Ðµ Ð½Ð°Ð¹Ð´ÐµÐ½Ð¾ Ð½Ð° Ð½Ð°Ñ‡Ð°Ð»ÑŒÐ½Ð¾Ð¼ ÑˆÐ°Ð³Ðµ." << endl;
+        return true;
+	}
+
+    for (int k = 1; k <= maxIter; k++)
+    {
+        Solve_Ux_y(z, tmp);
+        Multiply(tmp, Ap);
+        Solve_Ly_b(Ap, tmp2);
+        SolveLTranspose(tmp2, tmp);
         MultiplyTranspose(tmp, Ap);
+        SolveUTranspose(Ap, Atb);
 
-        double pAp = Dot(p, Ap);
-        if (fabs(pAp) < 1e-30)
-        {
-            cout << "Ðåøåíèå ñîøëîñü (pAp ~ 0) íà èòåðàöèè " << iter << endl;
-            return true;
-        }
+        double denom = Dot(Atb, z);
+        if (fabs(denom) < eps) break;
 
-        double alpha = rz_old / pAp;
+		double alpha = rho_prev / denom;
 
         for (int i = 0; i < n; ++i)
         {
-            x[i] += alpha * p[i];
-            r[i] -= alpha * Ap[i];
+            p[i] += alpha * z[i];
+            r[i] -= alpha * Atb[i];
         }
 
-        double relRes = Norm2(r) / normAtb;
-        if (relRes < eps)
+        double rho_new = Dot(r, r);
+        double current_norm = sqrt(rho_new);
+
+        if (current_norm < eps) break;
+
+        double beta = rho_new / rho_prev;
+        rho_prev = rho_new;
+
+        for (int i = 0; i < n; ++i) z[i] = r[i] + beta * z[i];
+    }
+    Solve_Ux_y(p, x);
+
+    return true;
+}
+
+void SparseMatrix::BuildILU()
+{
+    for (int i = 0; i < n; ++i) ilu_di[i] = di[i];
+    for (int i = 0; i < sizeGGL; ++i) ilu_ggl[i] = ggl[i];
+    for (int i = 0; i < sizeGGU; ++i) ilu_ggu[i] = ggu[i];
+
+    int k_l = 0;
+    int k_u = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        ggl_row_start[i] = k_l;
+        ggu_row_start[i] = k_u;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        for (int p = i0; p < i1; ++p)
         {
-            cout << "Ðåøåíèå ñîøëîñü çà " << iter + 1 << " èòåðàöèé.\n";
-            return true;
-        }
-
-        for (int i = 0; i < n; ++i) z[i] = r[i];
-
-        double rz_new = Dot(r, z);
-
-        double beta = rz_new / rz_old;
-        rz_old = rz_new;
-
-        for (int i = 0; i < n; ++i)
-        {
-            p[i] = z[i] + beta * p[i];
+            int j = jg[p];
+            if (j < i) k_l++;
+            else if (j > i) k_u++;
         }
     }
+}
 
-    cerr << "Ðåøåíèå íå ñîøëîñü çà " << maxIter << " èòåðàöèé.\n";
-    return false;
+void SparseMatrix::Solve_Ly_b(const double* b, double* y) const
+{
+    for (int i = 0; i < n; ++i)
+    {
+        double sum = 0.0;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int k = ggl_row_start[i];
+
+        for (int p = i0; p < i1; ++p)
+        {
+            int j = jg[p];
+            if (j < i)
+            {
+                sum += ilu_ggl[k] * y[j];
+                k++;
+            }
+        }
+        y[i] = (b[i] - sum) / ilu_di[i];
+    }
+}
+void SparseMatrix::Solve_Ux_y(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = n - 1; i >= 0; --i)
+    {
+        double sum = 0.0;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int k = ggu_row_start[i];
+
+        int p = i0;
+        while (p < i1 && jg[p] < i) p++;
+
+        for (; p < i1; ++p) 
+        {
+            int j = jg[p];
+            if (j > i)
+            {
+                sum += ilu_ggu[k] * x[j];
+                k++;
+            }
+        }
+
+        x[i] -= sum;
+    }
+}
+void SparseMatrix::SolveLTranspose(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = n - 1; i >= 0; i--)
+    {
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int k = ggl_row_start[i];
+        for (int p = i0; p < i1; p++)
+        {
+            int j = jg[p];
+            if (j < i)
+            {
+                x[j] -= ilu_ggl[k] * x[i];
+                k++;
+            }
+        }
+		x[i] /= ilu_di[i];
+    }
+}
+void SparseMatrix::SolveUTranspose(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = 0; i < n; i++)
+    {
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int k = ggu_row_start[i];
+        int p = i0;
+        while (p < i1 && jg[p] < i) p++;
+        for (; p < i1; p++)
+        {
+            int j = jg[p];
+            if (j > i)
+            {
+                x[j] -= ilu_ggu[k] * x[i];
+                k++;
+            }
+        }
+    }
 }
