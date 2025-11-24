@@ -32,6 +32,8 @@ private:
     bool InitialSolution(double* x) const;
 
     void PreparePreconditioner();
+    void ApplyDiagPreconditioner(const double* r, double* z) const;
+    void ApplyILUPreconditioner(const double* r, double* z) const;
     void SolveL(const double* y, double* x) const;
     void SolveU(const double* y, double* x) const;
     void SolveLTranspose(const double* y, double* x) const;

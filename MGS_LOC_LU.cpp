@@ -1,32 +1,75 @@
-﻿// MGS_LOC_LU.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
-//
-
+﻿#include <iostream>
+#include <iomanip>
+#include <string>
+#include <chrono>
+#include <algorithm> 
 #include "SparseMatrix.h"
+void RunSolverTests(const SparseMatrix& A, double* x, double* xTrue, const string& methodName)
+{
+    string preconds[] = { "diag", "ilu", "none" };
 
+    for (const string& prec : preconds)
+    {
+        for (int i = 0; i < A.n; i++)
+        {
+            x[i] = 0.0;
+        }
+
+        cout << "=== " << methodName << " (" << prec << ") ===" << endl;
+
+        auto start_time = std::chrono::high_resolution_clock::now();
+
+        bool success = false;
+        if (methodName == "MSG") 
+        {
+            success = A.SolveMSG(x, xTrue, prec);
+        }
+        else if (methodName == "LOS")
+        {
+            success = A.SolveLOS(x, xTrue, prec);
+        }
+
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed_time = end_time - start_time;
+
+        if (success)
+        {
+            cout << "Time: " << fixed << setprecision(6) << elapsed_time.count() << " sec" << endl;
+        }
+        else 
+        {
+            cout << "Time: " << fixed << setprecision(6) << elapsed_time.count() << " sec (Not Converged)" << endl;
+        }
+        cout << "\n";
+    }
+
+}
 
 int main()
 {
-	setlocale(LC_ALL, "rus");
-	SparseMatrix A;
-	A.ReadFromFiles();
-	A.PrintDense();
+    setlocale(LC_ALL, "rus");
 
-	double* x1 = new double[A.n] {0,0,0,0,0,0,0,0,0,0,0,0};
-	double* x2 = new double[A.n] {0,0,0,0,0,0,0,0,0,0,0,0};
-	double* x3 = new double[A.n] {0,0,0,0,0,0,0,0,0,0,0,0};
-	double* xTrue = new double[A.n] {1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12};
+    SparseMatrix A;
+    if (!A.ReadFromFiles())
+    {
+        return 1;
+    }
+    double* x = new double[A.n];
+    double* xTrue = new double[A.n];
 
-	/*A.SolveMSG(x1, xTrue, "diag");
-	cout << "\n\n"; x1 = new double[A.n] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	A.SolveMSG(x2, xTrue, "ilu");
-	cout << "\n\n"; x2 = new double[A.n] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-	A.SolveMSG(x3, xTrue); 
-	cout << "\n\n"; x3 = new double[A.n] {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};*/
+    for (int i = 0; i < A.n; i++)
+    {
+        xTrue[i] = i + 1.0;
+        x[i] = 0.0;
+    }
 
+    RunSolverTests(A, x, xTrue, "MSG");
 
-	A.SolveLOS(x1, xTrue, "diag");
-	cout << "\n\n";
-	A.SolveLOS(x2, xTrue, "ilu");
-	cout << "\n\n";
-	A.SolveLOS(x3, xTrue);
+    cout << "----------------------------------------------------" << endl;
+    cout << endl;
+
+    RunSolverTests(A, x, xTrue, "LOS");
+
+    delete[] xTrue;
+    return 0;
 }

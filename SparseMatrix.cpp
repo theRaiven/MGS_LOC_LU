@@ -22,7 +22,8 @@ bool SparseMatrix::AllocateWorkVectors()
     diagAtA = new double[n];
     inxL = new double[n];
     inxU = new double[n];
-    for (int i = 0; i < n; ++i) {
+    for (int i = 0; i < n; ++i) 
+    {
         Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = invDiag[i] = inxU[i] = inxL[i] = 0.0;
     }
 
@@ -390,7 +391,7 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
         double pAp = Dot(p, Ap);
         if (fabs(pAp) < 1e-30)
         {
-            cout << "Решение сошлось (pAp ~ 0) на итерации " << iter << endl;
+            cout << "Решение сошлось (pAp ~ 0) на итерации " << iter;
             return true;
         }
 
@@ -405,7 +406,7 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
         double relRes = Norm2(r) / normAtb;
         if (relRes < eps)
         {
-            cout << "MSG сошёлся на итерации " << iter << " относительная невязка = " << relRes << endl;
+            cout << "MSG сошёлся на итерации ";
             PrintResults(iter, relRes, x, xTrue, n);
             return true;
         }
@@ -446,6 +447,102 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
 }
 bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
 {
+    Multiply(x, r);
+	for (int i = 0; i < n; ++i) r[i] = b[i] - r[i];
+
+    if (prec == "diag")
+    {
+        ApplyDiagPreconditioner(r, z);
+    }
+    else if (prec == "ilu") 
+    {
+        ApplyILUPreconditioner(r, z);
+    }
+    else
+    {
+        for (int i = 0; i < n; ++i) 
+        {
+            z[i] = r[i];
+        }
+    }
+
+	Multiply(z, p);
+
+    double normB = Norm2(b);
+    double normR = Norm2(r);
+    double relRes = normR / normB;
+
+    cout << "LOS начальная невязка: " << relRes << endl;
+
+    if (relRes < eps)
+    {
+        cout << "LOS сошёлся на 0 итерации" << endl;
+        return true;
+    }
+
+    for (int iter = 0; iter < maxIter; ++iter)
+    {
+        double pDotR = Dot(p, r);
+        double pDotP = Dot(p, p);
+
+        if (fabs(pDotP) < 1e-30)
+        {
+            cout << "LOS: (p,p) ~ 0 на итерации " << iter << endl;
+            return true;
+        }
+
+		double alpha = pDotR / pDotP;
+
+        for (int i = 0; i < n; i++)
+        {
+            x[i] += alpha * z[i];
+        }
+        for (int i = 0; i < n; i++)
+        {
+            r[i] -= alpha * p[i];
+		}
+
+        normR = Norm2(r);
+        relRes = normR / normB;
+
+        if (relRes < eps)
+        {
+            cout << "LOS сошёлся на итерации ";
+            PrintResults(iter, relRes, x, xTrue, n);
+            return true;
+        }
+
+        if (prec == "diag") 
+        {
+            ApplyDiagPreconditioner(r, tmp);
+        }
+        else if (prec == "ilu")
+        {
+            ApplyILUPreconditioner(r, tmp);
+        }
+        else 
+        {
+            for (int i = 0; i < n; ++i) 
+            {
+                tmp[i] = r[i];
+            }
+        }
+
+        Multiply(r, Ap);
+        double pDotAp = Dot(p, Ap);
+		double beta = -pDotAp / pDotP;
+
+        for (int i = 0; i < n; i++)
+        {
+            z[i] = r[i] + beta * z[i];
+            p[i] = Ap[i] + beta * p[i];
+		}
+        // Я пишу этот код где-то ночью
+        // Ветер шёпотом пишет мне строчки
+	    
+    }
+    cerr << "LOS не сошлось за " << maxIter << " итераций. Текущая невязка = " << relRes << endl;
+    return false;
 }
 void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
 {
@@ -484,7 +581,27 @@ void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
     }
 }
 
+void SparseMatrix::ApplyDiagPreconditioner(const double* r, double* z) const
+{
+    for (int i = 0; i < n; ++i) 
+    {
+        if (fabs(di[i]) > 1e-15)
+        {
+            z[i] = r[i] / di[i];
+        }
+        else
+        {
+            z[i] = r[i];
+        }
+    }
+}
 
+void SparseMatrix::ApplyILUPreconditioner(const double* r, double* z) const
+{
+    SolveL(r, z);  // z = L^-1 r
+
+    SolveU(z, z);  // z = U^-1 (L^-1 r)
+}
 void SparseMatrix::SolveL(const double* b, double* y) const
 {
     for (int i = 0; i < n; ++i)
