@@ -1,4 +1,4 @@
-#include "SparseMatrix.h"
+ï»¿#include "SparseMatrix.h"
 #include <vector>
 SparseMatrix::SparseMatrix() : n(0), ig(nullptr), jg(nullptr), ggl(nullptr), ggu(nullptr),
                                 di(nullptr), b(nullptr),
@@ -10,7 +10,7 @@ bool SparseMatrix::AllocateWorkVectors()
 {
     if (n <= 0) return false;
 
-    delete[] Atb; delete[] r; delete[] z; delete[] p; delete[] Ap; delete[] tmp; delete[] invDiag;
+    delete[] Atb; delete[] r; delete[] z; delete[] p; delete[] Ap; delete[] tmp; delete[] invDiag; delete[] diagAtA;
 
     Atb = new double[n];
     r = new double[n];
@@ -19,9 +19,11 @@ bool SparseMatrix::AllocateWorkVectors()
     Ap = new double[n];
     tmp = new double[n];
     invDiag = new double[n];
-
+    diagAtA = new double[n];
+    inxL = new double[n];
+    inxU = new double[n];
     for (int i = 0; i < n; ++i) {
-        Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = invDiag[i] = 0.0;
+        Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = invDiag[i] = inxU[i] = inxL[i] = 0.0;
     }
 
     return true;
@@ -35,19 +37,27 @@ SparseMatrix::~SparseMatrix()
     delete[] ggu; ggu = nullptr;
     delete[] di;  di = nullptr;
     delete[] b;   b = nullptr;
+	delete[] Atb; Atb = nullptr;
+    delete[] r;   r = nullptr;
+    delete[] z;   z = nullptr;
+    delete[] p;   p = nullptr;
+    delete[] Ap;  Ap = nullptr;
+    delete[] tmp; tmp = nullptr;
+    delete[] invDiag; invDiag = nullptr;
+	delete[] diagAtA; diagAtA = nullptr;
 }
 
 bool SparseMatrix::ReadIntArray(const string& file, int*& masData, int size)
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new int[size];
@@ -55,7 +65,7 @@ bool SparseMatrix::ReadIntArray(const string& file, int*& masData, int size)
     {
         if (!(fmas >> masData[i]))
         {
-            cerr << "Îøèáêà ÷òåíèÿ: " << file << endl;
+            cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << endl;
             delete[] masData;
             masData = nullptr;
             return false;
@@ -67,13 +77,13 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new double[size];
@@ -81,7 +91,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
     {
         if (!(fmas >> masData[i]))
         {
-            cerr << "Îøèáêà ÷òåíèÿ: " << file << endl;
+            cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << endl;
             delete[] masData;
             masData = nullptr;
             return false;
@@ -93,13 +103,13 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
 {
     if (size < 0)
     {
-        cerr << "Ðàçìåðíîñòü ìàññèâà íå äåéñòâèåòëüíà: " << endl;
+        cerr << "Ð Ð°Ð·Ð¼ÐµÑ€Ð½Ð¾ÑÑ‚ÑŒ Ð¼Ð°ÑÑÐ¸Ð²Ð° Ð½Ðµ Ð´ÐµÐ¹ÑÑ‚Ð²Ð¸ÐµÑ‚Ð»ÑŒÐ½Ð°: " << endl;
         return false;
     }
     ifstream fmas(file);
     if (!fmas)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü: " << file << endl;
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ: " << file << endl;
         return false;
     }
     masData = new double[size];
@@ -113,7 +123,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
             }
             else
             {
-                cerr << "Îøèáêà ÷òåíèÿ: " << file << " íà ýëåìåíòå " << i << endl;
+                cerr << "ÐžÑˆÐ¸Ð±ÐºÐ° Ñ‡Ñ‚ÐµÐ½Ð¸Ñ: " << file << " Ð½Ð° ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚Ðµ " << i << endl;
                 delete[] masData;
                 masData = nullptr;
                 return false;
@@ -128,7 +138,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     ifstream fkus(kuslauFile.c_str());
     if (!fkus)
     {
-        cerr << "Íåâîçìîæíî îòêðûòü " << kuslauFile << "\n";
+        cerr << "ÐÐµÐ²Ð¾Ð·Ð¼Ð¾Ð¶Ð½Ð¾ Ð¾Ñ‚ÐºÑ€Ñ‹Ñ‚ÑŒ " << kuslauFile << "\n";
         return false;
     }
     fkus >> n >> maxIter >> eps;
@@ -138,7 +148,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     int jgSize = ig[n];
     if (jgSize <= 0)
     {
-        cerr << "Íåâåðíûé jgSize (ig[n]) = " << jgSize << endl;
+        cerr << "ÐÐµÐ²ÐµÑ€Ð½Ñ‹Ð¹ jgSize (ig[n]) = " << jgSize << endl;
         return false;
     }
     if (!ReadIntArray("jg.txt", jg, jgSize)) return false;
@@ -149,6 +159,7 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
     AllocateWorkVectors();
     return true;
 }
+
 void SparseMatrix::Multiply(const double* x, double* y) const
 {
     for (int i = 0; i < n; i++)
@@ -182,7 +193,6 @@ void SparseMatrix::Multiply(const double* x, double* y) const
         }
     }
 }
-
 void SparseMatrix::MultiplyTranspose(const double* v, double* y) const
 {
     for (int i = 0; i < n; i++) 
@@ -217,10 +227,9 @@ void SparseMatrix::MultiplyTranspose(const double* v, double* y) const
     }
 }
 
-
 void SparseMatrix::PrintDense() const
 {
-    cout << "Ïëîòíàÿ ìàòðèöà " << n << "x" << n << ":\n";
+    cout << "ÐŸÐ»Ð¾Ñ‚Ð½Ð°Ñ Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ð° " << n << "x" << n << ":\n";
     int lowerUpperSize = (ig[n] - n) / 2;
 
     double** dense = new double* [n];
@@ -268,13 +277,31 @@ void SparseMatrix::PrintDense() const
         }
     }
 
-    // Ïå÷àòü ìàòðèöû
+    // ÐŸÐµÑ‡Ð°Ñ‚ÑŒ Ð¼Ð°Ñ‚Ñ€Ð¸Ñ†Ñ‹
     for (int i = 0; i < n; i++) {
         for (int j = 0; j < n; j++) {
             cout << setw(8) << setprecision(3) << dense[i][j] << " ";
         }
         cout << endl;
     }
+}
+void SparseMatrix::PrintResults(int iter, double normR, const double* x, const double* xTrue, int n) const
+{
+    cout << ", Iter = " << iter;
+    cout << scientific << setprecision(15) << ", normR = " << normR << endl;
+
+    cout << "i\t x_i" << endl;
+    for (int i = 0; i < n; i++)
+    {
+        cout << x[i] << endl;
+    }
+
+    cout << "i\t x* _i - x_i" << endl;
+    for (int i = 0; i < n; i++)
+    {
+        cout << xTrue[i] - x[i] << endl;
+    }
+    cout << endl << endl;
 }
 
 double SparseMatrix::Dot(const double* a, const double* b) const
@@ -286,30 +313,75 @@ double SparseMatrix::Dot(const double* a, const double* b) const
     }
     return result;
 }
-
 double SparseMatrix::Norm2(const double* a) const
 {
     return sqrt(Dot(a, a));
 }
-
-bool SparseMatrix::SolveMSG(double* x, const string& prec) const
+bool SparseMatrix::InitialSolution(double* x) const
 {
+    Multiply(x, tmp);
+    for (int i = 0; i < n; ++i) tmp[i] = b[i] - tmp[i];
+    MultiplyTranspose(tmp, r);
+
+    double norm0 = Norm2(r);
+    if (norm0 < eps)
+    {
+        cout << "MSG: Ð½Ð°Ñ‡Ð°Ð»ÑŒÐ½Ð¾Ðµ Ð¿Ñ€Ð¸Ð±Ð»Ð¸Ð¶ÐµÐ½Ð¸Ðµ ÑÐ²Ð»ÑÐµÑ‚ÑÑ Ñ€ÐµÑˆÐµÐ½Ð¸ÐµÐ¼, 0 Ð¸Ñ‚ÐµÑ€Ð°Ñ†Ð¸Ð¹.\n";
+        return true;
+    }
+    return false;
+}
+
+bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
+{
+    bool firstSolve = InitialSolution(x);
+    if (firstSolve)
+    {
+        return true;
+    }
+
     MultiplyTranspose(b, Atb);
 
     for (int i = 0; i < n; ++i)
     {
-        x[i] = 0.0;
+        //x[i] = 0.0;
         r[i] = Atb[i];
     }
+    
+    if (prec == "diag")
+    {
+        ComputeDiagAtA(diagAtA);
 
-    for (int i = 0; i < n; ++i) z[i] = r[i];
+        for (int i = 0; i < n; ++i)
+        {
+            double v = diagAtA[i];
+            if (fabs(v) < 1e-30) throw runtime_error("\nÐžÐ¨Ð˜Ð‘ÐšÐ!!! Ð”Ð¸Ð°Ð³Ð¾Ð½Ð°Ð»ÑŒÐ½Ñ‹Ð¹ ÑÐ»ÐµÐ¼ÐµÐ½Ñ‚ Ñ€Ð°Ð²ÐµÐ½ Ð½ÑƒÐ»ÑŽ. ÐœÐµÑ‚Ð¾Ð´ Ð´Ð¸Ð°Ð»ÑŒÐ½Ð¾Ð³Ð°Ð»ÑŒÐ½Ð¾Ð¹ Ð¿Ñ€ÐµÐ´Ð¾Ð±ÑƒÑÐ»Ð¾Ð²Ð»ÐµÐ½Ð½Ð¾ÑÑ‚Ð¸ Ð½Ðµ Ð´Ð°Ð» Ñ€ÐµÐ·ÑƒÐ»ÑŒÑ‚Ð°Ñ‚\n");
+            invDiag[i] = 1.0 / v;
+            z[i] = r[i] * invDiag[i];
+        }
+    }
+    else if (prec == "ilu")
+    {
+        SolveUTranspose(r, p);   // p = U^-T r
+        SolveLTranspose(p, Ap);  // Ap = L^-T p
+        SolveL(Ap, p);           // p = L^-1 Ap
+        SolveU(p, z);            // z = U^-1 p
+    }
+    else
+    {
+        for (int i = 0; i < n; ++i) z[i] = r[i];
+    }
+
 
     for (int i = 0; i < n; ++i) p[i] = z[i];
+
+    Multiply(p, tmp);           // tmp = A * p
+    MultiplyTranspose(tmp, Ap); // Ap = A^T * (A * p)
 
     double rz_old = Dot(r, z);
     double normAtb = Norm2(Atb);
     if (normAtb < 1e-16) normAtb = 1.0;
-
+    
     for (int iter = 0; iter < maxIter; ++iter)
     {
         Multiply(p, tmp);
@@ -318,7 +390,7 @@ bool SparseMatrix::SolveMSG(double* x, const string& prec) const
         double pAp = Dot(p, Ap);
         if (fabs(pAp) < 1e-30)
         {
-            cout << "Ðåøåíèå ñîøëîñü (pAp ~ 0) íà èòåðàöèè " << iter << endl;
+            cout << "Ð ÐµÑˆÐµÐ½Ð¸Ðµ ÑÐ¾ÑˆÐ»Ð¾ÑÑŒ (pAp ~ 0) Ð½Ð° Ð¸Ñ‚ÐµÑ€Ð°Ñ†Ð¸Ð¸ " << iter << endl;
             return true;
         }
 
@@ -333,14 +405,31 @@ bool SparseMatrix::SolveMSG(double* x, const string& prec) const
         double relRes = Norm2(r) / normAtb;
         if (relRes < eps)
         {
-            cout << "Ðåøåíèå ñîøëîñü çà " << iter + 1 << " èòåðàöèé.\n";
+            cout << "MSG ÑÐ¾ÑˆÑ‘Ð»ÑÑ Ð½Ð° Ð¸Ñ‚ÐµÑ€Ð°Ñ†Ð¸Ð¸ " << iter << " Ð¾Ñ‚Ð½Ð¾ÑÐ¸Ñ‚ÐµÐ»ÑŒÐ½Ð°Ñ Ð½ÐµÐ²ÑÐ·ÐºÐ° = " << relRes << endl;
+            PrintResults(iter, relRes, x, xTrue, n);
             return true;
         }
 
-        for (int i = 0; i < n; ++i) z[i] = r[i];
+        if (prec == "ilu")
+        {
+            SolveUTranspose(r, tmp);
+            SolveLTranspose(tmp, Ap);
+            
+            SolveUTranspose(r, tmp);
+            SolveLTranspose(tmp, Ap);
+            SolveL(Ap, tmp);
+            SolveU(tmp, z);
+        }
+        else if (prec == "diag")
+        {
+            for (int i = 0; i < n; ++i) z[i] = r[i] * invDiag[i];
+        }
+        else
+        {
+            for (int i = 0; i < n; ++i) z[i] = r[i];
+        }
 
         double rz_new = Dot(r, z);
-
         double beta = rz_new / rz_old;
         rz_old = rz_new;
 
@@ -348,8 +437,172 @@ bool SparseMatrix::SolveMSG(double* x, const string& prec) const
         {
             p[i] = z[i] + beta * p[i];
         }
+        Multiply(p, tmp);
+        MultiplyTranspose(tmp, Ap);
     }
 
-    cerr << "Ðåøåíèå íå ñîøëîñü çà " << maxIter << " èòåðàöèé.\n";
+    cerr << "Ð ÐµÑˆÐµÐ½Ð¸Ðµ Ð½Ðµ ÑÐ¾ÑˆÐ»Ð¾ÑÑŒ Ð·Ð° " << maxIter << " Ð¸Ñ‚ÐµÑ€Ð°Ñ†Ð¸Ð¹.\n";
     return false;
+}
+bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
+{
+}
+void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
+{
+    for (int i = 0; i < n; ++i) diagAtA[i] = 0.0;
+
+    int kgl = 0;
+    int kgu = 0;
+
+    for (int i = 0; i < n; i++)
+    {
+        double d = di[i];
+        diagAtA[i] = d * d;
+
+		int i0 = ig[i], i1 = ig[i + 1];
+
+        for (int p = i0; p < i1; p++)
+        {
+            int j = jg[p];
+            if (j < i)
+            {
+                if (kgl < sizeGGL)
+                {
+                    double v = ggl[kgl++];
+                    diagAtA[j] += v * v;
+                }
+            }
+            else if (j > i)
+            {
+                if (ggu && kgu < sizeGGU)
+                {
+                    double v = ggu[kgu++];
+                    diagAtA[j] += v * v;
+                }
+            }
+		}
+    }
+}
+
+
+void SparseMatrix::SolveL(const double* b, double* y) const
+{
+    for (int i = 0; i < n; ++i)
+    {
+        double sum = 0.0;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+
+        int idx_l = inxL[i];
+
+        for (int k = i0; k < i1; ++k)
+        {
+            int j = jg[k];
+            if (j < i)
+            {
+                sum += ggl[idx_l] * y[j];
+                idx_l++;
+            }
+            else break;
+        }
+
+        y[i] = (b[i] - sum) / di[i];
+    }
+}
+void SparseMatrix::SolveU(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = n - 1; i >= 0; --i)
+    {
+        double sum = 0.0;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+
+        int idx_u = inxU[i];
+
+        int k = i0;
+        while (k < i1 && jg[k] < i) k++;
+
+        for (; k < i1; ++k)
+        {
+            int j = jg[k];
+            if (j > i)
+            {
+                sum += ggu[idx_u] * x[j];
+                idx_u++;
+            }
+        }
+
+        x[i] -= sum; 
+    }
+}
+void SparseMatrix::SolveLTranspose(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = n - 1; i >= 0; --i)
+    {
+        x[i] /= di[i];
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int idx_l = inxL[i];
+
+        for (int k = i0; k < i1; ++k)
+        {
+            int j = jg[k];
+            if (j < i)
+            {
+                x[j] -= ggl[idx_l] * x[i];
+                idx_l++;
+            }
+            else break;
+        }
+    }
+}
+void SparseMatrix::SolveUTranspose(const double* y, double* x) const
+{
+    for (int i = 0; i < n; ++i) x[i] = y[i];
+
+    for (int i = 0; i < n; ++i)
+    {
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        int idx_u = inxU[i];
+
+        int k = i0;
+        while (k < i1 && jg[k] < i) k++;
+
+        for (; k < i1; ++k)
+        {
+            int j = jg[k];
+            if (j > i)
+            {
+                x[j] -= ggu[idx_u] * x[i];
+                idx_u++;
+            }
+        }
+    }
+}
+void SparseMatrix::PreparePreconditioner()
+{
+    int cnt_l = 0;
+    int cnt_u = 0;
+    for (int i = 0; i < n; ++i)
+    {
+        inxL[i] = cnt_l;
+        inxU[i] = cnt_u;
+
+        int i0 = ig[i];
+        int i1 = ig[i + 1];
+        for (int k = i0; k < i1; ++k)
+        {
+            int j = jg[k];
+            if (j < i) cnt_l++;
+            else if (j > i) cnt_u++;
+        }
+    }
 }
