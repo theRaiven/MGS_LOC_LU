@@ -38,6 +38,9 @@ private:
     void SolveU(const double* y, double* x) const;
     void SolveLTranspose(const double* y, double* x) const;
     void SolveUTranspose(const double* y, double* x) const;
+
+    void WriteSolution(const string& filename, const double* x) const;
+    double GetRelativeResidual(const double* x) const;
 public:
     int n;
     int sizeGGL{ 0 }, sizeGGU{ 0 };

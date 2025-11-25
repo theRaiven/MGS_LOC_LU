@@ -289,7 +289,7 @@ void SparseMatrix::PrintDense() const
 void SparseMatrix::PrintResults(int iter, double normR, const double* x, const double* xTrue, int n) const
 {
     cout << ", Iter = " << iter;
-    cout << scientific << setprecision(15) << ", normR = " << normR << endl;
+    cout << scientific << setprecision(15) << ", normR = " << normR << ", невязка: " << GetRelativeResidual(x) << endl;
 
     cout << "i\t x_i" << endl;
     for (int i = 0; i < n; i++)
@@ -595,7 +595,6 @@ void SparseMatrix::ApplyDiagPreconditioner(const double* r, double* z) const
         }
     }
 }
-
 void SparseMatrix::ApplyILUPreconditioner(const double* r, double* z) const
 {
     SolveL(r, z);  // z = L^-1 r
@@ -722,4 +721,39 @@ void SparseMatrix::PreparePreconditioner()
             else if (j > i) cnt_u++;
         }
     }
+}
+
+void SparseMatrix::WriteSolution(const string& filename, const double* x) const
+{
+    ofstream fout(filename);
+    if (!fout.is_open())
+    {
+        cerr << "Ошибка открытия файла для записи: " << filename << endl;
+        return;
+    }
+
+    fout << scientific << setprecision(15);
+    for (int i = 0; i < n; i++)
+    {
+        fout << x[i] << endl;
+    }
+    fout.close();
+    cout << "Решение записано в файл " << filename << endl;
+}
+double SparseMatrix::GetRelativeResidual(const double* x) const
+{
+    Multiply(x, r); 
+    double normNumerator = 0.0; 
+    double normDenominator = 0.0; 
+
+    for (int i = 0; i < n; i++)
+    {
+        double residue = b[i] - r[i];
+        normNumerator += residue * residue;
+        normDenominator += b[i] * b[i];
+    }
+
+    if (fabs(normDenominator) < 1e-30) return 0.0; 
+
+    return sqrt(normNumerator) / sqrt(normDenominator);
 }
