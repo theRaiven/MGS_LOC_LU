@@ -1,4 +1,6 @@
-﻿#include "SparseMatrix.h"
+﻿// SparseMatrix.cpp
+
+#include "SparseMatrix.h"
 #include <vector>
 SparseMatrix::SparseMatrix() : n(0), ig(nullptr), jg(nullptr), ggl(nullptr), ggu(nullptr),
                                 di(nullptr), b(nullptr),
@@ -298,11 +300,19 @@ void SparseMatrix::PrintResults(int iter, double normR, const double* x, const d
     }
 
     cout << "i\t x* _i - x_i" << endl;
+
+    cout << scientific << setprecision(2);
+
     for (int i = 0; i < n; i++)
     {
-        cout << xTrue[i] - x[i] << endl;
+        double diff = xTrue[i] - x[i];
+
+        cout << diff << endl;
     }
+
     cout << endl << endl;
+
+    cout << defaultfloat << setprecision(6);
 }
 
 double SparseMatrix::Dot(const double* a, const double* b) const

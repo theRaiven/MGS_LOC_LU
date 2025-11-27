@@ -1,4 +1,6 @@
-﻿#include <iostream>
+﻿// main.cpp
+
+#include <iostream>
 #include <iomanip>
 #include <string>
 #include <chrono>
@@ -50,6 +52,7 @@ int main()
     setlocale(LC_ALL, "rus");
 
     SparseMatrix A;
+    
     if (!A.ReadFromFiles())
     {
         return 1;
@@ -62,7 +65,7 @@ int main()
         xTrue[i] = i + 1.0;
         x[i] = 0.0;
     }
-
+    A.PrintDense();
     RunSolverTests(A, x, xTrue, "MSG");
 
     cout << "----------------------------------------------------" << endl;
