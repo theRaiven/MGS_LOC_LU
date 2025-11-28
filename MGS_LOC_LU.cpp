@@ -6,7 +6,7 @@
 #include <chrono>
 #include <algorithm> 
 #include "SparseMatrix.h"
-void RunSolverTests(const SparseMatrix& A, double* x, double* xTrue, const string& methodName)
+void RunSolverTests(const SparseMatrix& A, real* x, real* xTrue, const string& methodName)
 {
     string preconds[] = { "diag", "ilu", "none" };
 
@@ -32,7 +32,7 @@ void RunSolverTests(const SparseMatrix& A, double* x, double* xTrue, const strin
         }
 
         auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed_time = end_time - start_time;
+        std::chrono::duration<real> elapsed_time = end_time - start_time;
 
         if (success)
         {
@@ -47,32 +47,68 @@ void RunSolverTests(const SparseMatrix& A, double* x, double* xTrue, const strin
 
 }
 
+void WorkingWithHilbert()
+{
+    cout << "\n======================================================\n";
+    cout << "      ЗАПУСК ТЕСТОВ НА МАТРИЦАХ ГИЛЬБЕРТА \n";
+    cout << "======================================================\n";
+
+    SparseMatrix A;
+
+    A.maxIter = 100000;
+    A.eps = 1e-12;
+
+    for (int n = 5; n <= 10; n+=5)
+    {
+        cout << ">>> Matrix Hilbert " << n << "x" << n << " <<<" << endl;
+
+        A.GenerateHilbertMatrix(n);
+
+        A.PrintDense();
+
+        real* x = new real[n];
+        real* xTrue = new real[n];
+
+        for (int i = 0; i < n; i++) xTrue[i] = i + 1.0;
+
+        if (n <= 3) A.PrintDense();
+
+        RunSolverTests(A, x, xTrue, "MSG");
+        RunSolverTests(A, x, xTrue, "LOS");
+
+        delete[] x;
+        delete[] xTrue;
+
+        cout << "------------------------------------------------------" << endl;
+    }
+}
+
 int main()
 {
     setlocale(LC_ALL, "rus");
 
-    SparseMatrix A;
-    
-    if (!A.ReadFromFiles())
+    // Выбираем режим работы:
+    int mode;
+    cout << "1 - Чтение из файлов (kuslau)\n2 - Тест Гильберта (5 и 10)\nВыбор: ";
+    cin >> mode;
+
+    if (mode == 1)
     {
-        return 1;
+        SparseMatrix A;
+        if (A.ReadFromFiles())
+        {
+            real* x = new real[A.n];
+            real* xTrue = new real[A.n];
+            // Тут логика для файлового режима (или заглушка)
+            for (int i = 0; i < A.n; i++) { x[i] = 0; xTrue[i] = i + 1; } // заглушка xTrue
+            RunSolverTests(A, x, xTrue, "MSG");
+            delete[] x; delete[] xTrue;
+        }
     }
-    double* x = new double[A.n];
-    double* xTrue = new double[A.n];
-
-    for (int i = 0; i < A.n; i++)
+    else if (mode == 2)
     {
-        xTrue[i] = i + 1.0;
-        x[i] = 0.0;
+        WorkingWithHilbert();
     }
-    A.PrintDense();
-    RunSolverTests(A, x, xTrue, "MSG");
 
-    cout << "----------------------------------------------------" << endl;
-    cout << endl;
-
-    RunSolverTests(A, x, xTrue, "LOS");
-
-    delete[] xTrue;
     return 0;
 }

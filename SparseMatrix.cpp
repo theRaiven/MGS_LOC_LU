@@ -2,6 +2,7 @@
 
 #include "SparseMatrix.h"
 #include <vector>
+
 SparseMatrix::SparseMatrix() : n(0), ig(nullptr), jg(nullptr), ggl(nullptr), ggu(nullptr),
                                 di(nullptr), b(nullptr),
                                 Atb(nullptr), r(nullptr), z(nullptr), p(nullptr),
@@ -14,16 +15,16 @@ bool SparseMatrix::AllocateWorkVectors()
 
     delete[] Atb; delete[] r; delete[] z; delete[] p; delete[] Ap; delete[] tmp; delete[] invDiag; delete[] diagAtA;
 
-    Atb = new double[n];
-    r = new double[n];
-    z = new double[n];
-    p = new double[n];
-    Ap = new double[n];
-    tmp = new double[n];
-    invDiag = new double[n];
-    diagAtA = new double[n];
-    inxL = new double[n];
-    inxU = new double[n];
+    Atb = new real[n];
+    r = new real[n];
+    z = new real[n];
+    p = new real[n];
+    Ap = new real[n];
+    tmp = new real[n];
+    invDiag = new real[n];
+    diagAtA = new real[n];
+    inxL = new real[n];
+    inxU = new real[n];
     for (int i = 0; i < n; ++i) 
     {
         Atb[i] = r[i] = z[i] = p[i] = Ap[i] = tmp[i] = invDiag[i] = inxU[i] = inxL[i] = 0.0;
@@ -76,7 +77,7 @@ bool SparseMatrix::ReadIntArray(const string& file, int*& masData, int size)
     }
     return true;
 }
-bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int size)
+bool SparseMatrix::ReadrealArray(const string& file, real*& masData, int size)
 {
     if (size < 0)
     {
@@ -89,7 +90,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
         cerr << "Невозможно открыть: " << file << endl;
         return false;
     }
-    masData = new double[size];
+    masData = new real[size];
     for (int i = 0; i < size; i++)
     {
         if (!(fmas >> masData[i]))
@@ -102,7 +103,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
     }
     return true;
 }
-bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int size, int& GetRealSize)
+bool SparseMatrix::ReadrealArray(const string& file, real*& masData, int size, int& GetRealSize)
 {
     if (size < 0)
     {
@@ -115,7 +116,7 @@ bool SparseMatrix::ReadDoubleArray(const string& file, double*& masData, int siz
         cerr << "Невозможно открыть: " << file << endl;
         return false;
     }
-    masData = new double[size];
+    masData = new real[size];
     for (int i = 0; i < size; i++)
     {
         if (!(fmas >> masData[i]))
@@ -155,15 +156,74 @@ bool SparseMatrix::ReadFromFiles(const string& kuslauFile)
         return false;
     }
     if (!ReadIntArray("jg.txt", jg, jgSize)) return false;
-    if (!ReadDoubleArray("ggl.txt", ggl, jgSize, sizeGGL)) return false;
-    if (!ReadDoubleArray("ggu.txt", ggu, jgSize, sizeGGU)) return false;
-    if (!ReadDoubleArray("di.txt", di, n)) return false;
-    if (!ReadDoubleArray("pr.txt", b, n)) return false;
+    if (!ReadrealArray("ggl.txt", ggl, jgSize, sizeGGL)) return false;
+    if (!ReadrealArray("ggu.txt", ggu, jgSize, sizeGGU)) return false;
+    if (!ReadrealArray("di.txt", di, n)) return false;
+    if (!ReadrealArray("pr.txt", b, n)) return false;
     AllocateWorkVectors();
     return true;
 }
 
-void SparseMatrix::Multiply(const double* x, double* y) const
+void SparseMatrix::GenerateHilbertMatrix(int Size)
+{
+    this->n = Size;
+
+    delete[] ig; delete[] jg; delete[] ggl; delete[] ggu;
+    delete[] di; delete[] b;
+
+    long long nz = (long long)n * (n - 1);
+
+    sizeGGL = nz / 2;
+    sizeGGU = nz / 2;
+
+    ig = new int[n + 1];
+    jg = new int[nz];
+    ggl = new real[sizeGGL];
+    ggu = new real[sizeGGU];
+    di = new real[n];
+    b = new real[n];
+
+    ig[0] = 0;
+    int k = 0;      // индекс для jg
+    int k_l = 0;    // индекс для ggl
+    int k_u = 0;    // индекс для ggu
+
+    for (int i = 0; i < n; i++)
+    {
+        di[i] = 1.0 / (real)(i + i + 1);
+
+        for (int j = 0; j < n; j++)
+        {
+            if (i == j) continue;
+
+            jg[k] = j;
+
+            real val = 1.0 / (real)(i + j + 1);
+
+            if (j < i)
+            {
+                ggl[k_l++] = val;
+            }
+            else
+            {
+                ggu[k_u++] = val;
+            }
+            k++;
+        }
+        ig[i + 1] = k;
+    }
+
+    AllocateWorkVectors();
+
+    real* xTrueTemp = new real[n];
+    for (int i = 0; i < n; i++) xTrueTemp[i] = i + 1.0;
+
+    Multiply(xTrueTemp, b);
+
+    delete[] xTrueTemp;
+}
+
+void SparseMatrix::Multiply(const real* x, real* y) const
 {
     for (int i = 0; i < n; i++)
     {
@@ -196,7 +256,7 @@ void SparseMatrix::Multiply(const double* x, double* y) const
         }
     }
 }
-void SparseMatrix::MultiplyTranspose(const double* v, double* y) const
+void SparseMatrix::MultiplyTranspose(const real* v, real* y) const
 {
     for (int i = 0; i < n; i++) 
     {
@@ -235,11 +295,11 @@ void SparseMatrix::PrintDense() const
     cout << "Плотная матрица " << n << "x" << n << ":\n";
     int lowerUpperSize = (ig[n] - n) / 2;
 
-    double** dense = new double* [n];
+    real** dense = new real* [n];
 
     for (int i = 0; i < n; i++)
     {
-        dense[i] = new double[n];
+        dense[i] = new real[n];
         for (int j = 0; j < n; j++)
         {
             dense[i][j] = 0.0;
@@ -281,60 +341,86 @@ void SparseMatrix::PrintDense() const
     }
 
     // Печать матрицы
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
+    for (int i = 0; i < n; i++) 
+    {
+        for (int j = 0; j < n; j++)
+        {
             cout << setw(8) << setprecision(3) << dense[i][j] << " ";
         }
         cout << endl;
     }
+    cout << endl << "b = ";
+    for (int i = 0; i < n; i++)
+    {
+        cout << setw(8) << setprecision(3) << b[i] << " ";
+    }
+    cout << endl;
 }
-void SparseMatrix::PrintResults(int iter, double normR, const double* x, const double* xTrue, int n) const
+void SparseMatrix::PrintResults(int iter, real normR, const real* x, const real* xTrue, int n) const
 {
-    cout << ", Iter = " << iter;
-    cout << scientific << setprecision(15) << ", normR = " << normR << ", невязка: " << GetRelativeResidual(x) << endl;
+    cout << "Iter = " << iter << ", normR = " << scientific << setprecision(6) << normR
+        << ", RelRes: " << GetRelativeResidual(x) << endl;
 
-    cout << "i\t x_i" << endl;
-    for (int i = 0; i < n; i++)
-    {
-        cout << x[i] << endl;
-    }
-
-    cout << "i\t x* _i - x_i" << endl;
-
-    cout << scientific << setprecision(2);
+    cout << "\n------------------------------" << endl;
+    cout << "|          x_calc" << endl;
+    cout << "------------------------------" << endl;
 
     for (int i = 0; i < n; i++)
     {
-        double diff = xTrue[i] - x[i];
+        cout << scientific << setprecision(15) << setw(25) << x[i] << endl;
+    }
+    cout << "\n------------------------------" << endl;
+    cout << "|          x error" << endl;
+    cout << "------------------------------" << endl;
+    for (int i = 0; i < n; i++)
+    {
+        real diff = xTrue[i] - x[i];
+        if (fabs(diff) < 1e-16)
+        {
+            cout << setw(25) << "0.0";
+        }
+        else
+        {
+            double order = floor(log10(fabs(diff)));
 
-        cout << diff << endl;
+            int magnitude = (int)fabs(order);
+
+            int prec = 15 - magnitude;
+
+            if (prec < 1) prec = 1;
+            if (prec > 15) prec = 15;
+
+            cout << scientific << setprecision(prec) << setw(25) << diff;
+        }
+
+        cout << endl;
     }
 
-    cout << endl << endl;
+    cout << "--------------------------------------------------------\n" << endl;
 
     cout << defaultfloat << setprecision(6);
 }
 
-double SparseMatrix::Dot(const double* a, const double* b) const
+real SparseMatrix::Dot(const real* a, const real* b) const
 {
-    double result = 0.0;
+    real result = 0.0;
     for (int i = 0; i < n; ++i)
     {
         result += a[i] * b[i];
     }
     return result;
 }
-double SparseMatrix::Norm2(const double* a) const
+real SparseMatrix::Norm2(const real* a) const
 {
     return sqrt(Dot(a, a));
 }
-bool SparseMatrix::InitialSolution(double* x) const
+bool SparseMatrix::InitialSolution(real* x) const
 {
     Multiply(x, tmp);
     for (int i = 0; i < n; ++i) tmp[i] = b[i] - tmp[i];
     MultiplyTranspose(tmp, r);
 
-    double norm0 = Norm2(r);
+    real norm0 = Norm2(r);
     if (norm0 < eps)
     {
         cout << "MSG: начальное приближение является решением, 0 итераций.\n";
@@ -343,7 +429,7 @@ bool SparseMatrix::InitialSolution(double* x) const
     return false;
 }
 
-bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
+bool SparseMatrix::SolveMSG(real* x,real*xTrue, const string& prec) const
 {
     bool firstSolve = InitialSolution(x);
     if (firstSolve)
@@ -365,8 +451,8 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
 
         for (int i = 0; i < n; ++i)
         {
-            double v = diagAtA[i];
-            if (fabs(v) < 1e-30) throw runtime_error("\nОШИБКА!!! Диагональный элемент равен нулю. Метод диальногальной предобусловленности не дал результат\n");
+            real v = diagAtA[i];
+            if (fabs(v) < EPS) throw runtime_error("\nОШИБКА!!! Диагональный элемент равен нулю. Метод диальногальной предобусловленности не дал результат\n");
             invDiag[i] = 1.0 / v;
             z[i] = r[i] * invDiag[i];
         }
@@ -389,23 +475,23 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
     Multiply(p, tmp);           // tmp = A * p
     MultiplyTranspose(tmp, Ap); // Ap = A^T * (A * p)
 
-    double rz_old = Dot(r, z);
-    double normAtb = Norm2(Atb);
-    if (normAtb < 1e-16) normAtb = 1.0;
+    real rz_old = Dot(r, z);
+    real normAtb = Norm2(Atb);
+    //if (normAtb < 1e-16) normAtb = 1.0;
     
     for (int iter = 0; iter < maxIter; ++iter)
     {
         Multiply(p, tmp);
         MultiplyTranspose(tmp, Ap);
 
-        double pAp = Dot(p, Ap);
-        if (fabs(pAp) < 1e-30)
+        real pAp = Dot(p, Ap);
+        if (fabs(pAp) < EPS)
         {
             cout << "Решение сошлось (pAp ~ 0) на итерации " << iter;
             return true;
         }
 
-        double alpha = rz_old / pAp;
+        real alpha = rz_old / pAp;
 
         for (int i = 0; i < n; ++i)
         {
@@ -413,7 +499,7 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
             r[i] -= alpha * Ap[i];
         }
 
-        double relRes = Norm2(r) / normAtb;
+        real relRes = Norm2(r) / normAtb;
         if (relRes < eps)
         {
             cout << "MSG сошёлся на итерации ";
@@ -440,8 +526,8 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
             for (int i = 0; i < n; ++i) z[i] = r[i];
         }
 
-        double rz_new = Dot(r, z);
-        double beta = rz_new / rz_old;
+        real rz_new = Dot(r, z);
+        real beta = rz_new / rz_old;
         rz_old = rz_new;
 
         for (int i = 0; i < n; ++i)
@@ -455,7 +541,7 @@ bool SparseMatrix::SolveMSG(double* x,double*xTrue, const string& prec) const
     cerr << "Решение не сошлось за " << maxIter << " итераций.\n";
     return false;
 }
-bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
+bool SparseMatrix::SolveLOS(real* x, real* xTrue, const string& prec) const
 {
     Multiply(x, r);
 	for (int i = 0; i < n; ++i) r[i] = b[i] - r[i];
@@ -478,11 +564,9 @@ bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
 
 	Multiply(z, p);
 
-    double normB = Norm2(b);
-    double normR = Norm2(r);
-    double relRes = normR / normB;
-
-    cout << "LOS начальная невязка: " << relRes << endl;
+    real normB = Norm2(b);
+    real normR = Norm2(r);
+    real relRes = normR / normB;
 
     if (relRes < eps)
     {
@@ -492,16 +576,16 @@ bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
 
     for (int iter = 0; iter < maxIter; ++iter)
     {
-        double pDotR = Dot(p, r);
-        double pDotP = Dot(p, p);
+        real pDotR = Dot(p, r);
+        real pDotP = Dot(p, p);
 
-        if (fabs(pDotP) < 1e-30)
+        if (fabs(pDotP) < EPS)
         {
             cout << "LOS: (p,p) ~ 0 на итерации " << iter << endl;
             return true;
         }
 
-		double alpha = pDotR / pDotP;
+		real alpha = pDotR / pDotP;
 
         for (int i = 0; i < n; i++)
         {
@@ -539,8 +623,8 @@ bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
         }
 
         Multiply(r, Ap);
-        double pDotAp = Dot(p, Ap);
-		double beta = -pDotAp / pDotP;
+        real pDotAp = Dot(p, Ap);
+		real beta = -pDotAp / pDotP;
 
         for (int i = 0; i < n; i++)
         {
@@ -554,7 +638,7 @@ bool SparseMatrix::SolveLOS(double* x, double* xTrue, const string& prec) const
     cerr << "LOS не сошлось за " << maxIter << " итераций. Текущая невязка = " << relRes << endl;
     return false;
 }
-void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
+void SparseMatrix::ComputeDiagAtA(real* diagAtA) const
 {
     for (int i = 0; i < n; ++i) diagAtA[i] = 0.0;
 
@@ -563,7 +647,7 @@ void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
 
     for (int i = 0; i < n; i++)
     {
-        double d = di[i];
+        real d = di[i];
         diagAtA[i] = d * d;
 
 		int i0 = ig[i], i1 = ig[i + 1];
@@ -575,7 +659,7 @@ void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
             {
                 if (kgl < sizeGGL)
                 {
-                    double v = ggl[kgl++];
+                    real v = ggl[kgl++];
                     diagAtA[j] += v * v;
                 }
             }
@@ -583,7 +667,7 @@ void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
             {
                 if (ggu && kgu < sizeGGU)
                 {
-                    double v = ggu[kgu++];
+                    real v = ggu[kgu++];
                     diagAtA[j] += v * v;
                 }
             }
@@ -591,7 +675,7 @@ void SparseMatrix::ComputeDiagAtA(double* diagAtA) const
     }
 }
 
-void SparseMatrix::ApplyDiagPreconditioner(const double* r, double* z) const
+void SparseMatrix::ApplyDiagPreconditioner(const real* r, real* z) const
 {
     for (int i = 0; i < n; ++i) 
     {
@@ -605,17 +689,17 @@ void SparseMatrix::ApplyDiagPreconditioner(const double* r, double* z) const
         }
     }
 }
-void SparseMatrix::ApplyILUPreconditioner(const double* r, double* z) const
+void SparseMatrix::ApplyILUPreconditioner(const real* r, real* z) const
 {
     SolveL(r, z);  // z = L^-1 r
 
     SolveU(z, z);  // z = U^-1 (L^-1 r)
 }
-void SparseMatrix::SolveL(const double* b, double* y) const
+void SparseMatrix::SolveL(const real* b, real* y) const
 {
     for (int i = 0; i < n; ++i)
     {
-        double sum = 0.0;
+        real sum = 0.0;
 
         int i0 = ig[i];
         int i1 = ig[i + 1];
@@ -636,13 +720,13 @@ void SparseMatrix::SolveL(const double* b, double* y) const
         y[i] = (b[i] - sum) / di[i];
     }
 }
-void SparseMatrix::SolveU(const double* y, double* x) const
+void SparseMatrix::SolveU(const real* y, real* x) const
 {
     for (int i = 0; i < n; ++i) x[i] = y[i];
 
     for (int i = n - 1; i >= 0; --i)
     {
-        double sum = 0.0;
+        real sum = 0.0;
 
         int i0 = ig[i];
         int i1 = ig[i + 1];
@@ -665,7 +749,7 @@ void SparseMatrix::SolveU(const double* y, double* x) const
         x[i] -= sum; 
     }
 }
-void SparseMatrix::SolveLTranspose(const double* y, double* x) const
+void SparseMatrix::SolveLTranspose(const real* y, real* x) const
 {
     for (int i = 0; i < n; ++i) x[i] = y[i];
 
@@ -689,7 +773,7 @@ void SparseMatrix::SolveLTranspose(const double* y, double* x) const
         }
     }
 }
-void SparseMatrix::SolveUTranspose(const double* y, double* x) const
+void SparseMatrix::SolveUTranspose(const real* y, real* x) const
 {
     for (int i = 0; i < n; ++i) x[i] = y[i];
 
@@ -733,7 +817,7 @@ void SparseMatrix::PreparePreconditioner()
     }
 }
 
-void SparseMatrix::WriteSolution(const string& filename, const double* x) const
+void SparseMatrix::WriteSolution(const string& filename, const real* x) const
 {
     ofstream fout(filename);
     if (!fout.is_open())
@@ -750,20 +834,20 @@ void SparseMatrix::WriteSolution(const string& filename, const double* x) const
     fout.close();
     cout << "Решение записано в файл " << filename << endl;
 }
-double SparseMatrix::GetRelativeResidual(const double* x) const
+real SparseMatrix::GetRelativeResidual(const real* x) const
 {
     Multiply(x, r); 
-    double normNumerator = 0.0; 
-    double normDenominator = 0.0; 
+    real normNumerator = 0.0; 
+    real normDenominator = 0.0; 
 
     for (int i = 0; i < n; i++)
     {
-        double residue = b[i] - r[i];
+        real residue = b[i] - r[i];
         normNumerator += residue * residue;
         normDenominator += b[i] * b[i];
     }
 
-    if (fabs(normDenominator) < 1e-30) return 0.0; 
+    if (fabs(normDenominator) < EPS) return 0.0; 
 
     return sqrt(normNumerator) / sqrt(normDenominator);
 }
